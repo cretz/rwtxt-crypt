@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"syscall"
+	"unicode"
 
 	log "github.com/cihub/seelog"
 	"github.com/cretz/bine/tor"
@@ -22,17 +23,17 @@ import (
 )
 
 func main() {
-	defer log.Flush()
 	if err := run(); err != nil {
-		log.Errorf("Failure: %v", err)
+		fmt.Fprintf(os.Stderr, "Failure: %v", err)
 		os.Exit(1)
 	}
 }
 
 func run() error {
+	defer log.Flush()
 	// Parse flags
 	debug := flag.Bool("debug", false, "debug mode")
-	dbName := flag.String("db", "rwtxt.db", "name of the database")
+	dbName := flag.String("db", "rwtxt-crypt.db", "name of the database")
 	dbPass := flag.String("dbPass", "", "string password to encrypt DB")
 	dbPassFile := flag.String("dbPassFile", "", "file with string password to encrypt DB")
 	onionKeyFile := flag.String("onionKeyFile", "", "file to load/save PEM onion private key to")
@@ -72,27 +73,23 @@ func run() error {
 	defer tor.Close()
 
 	// Listen on onion
-	log.Debug("Creating onion service")
+	log.Info("Please wait while creating onion service...")
 	onion, err := listenOnion(tor, *onionKeyFile)
 	if err != nil {
 		return fmt.Errorf("Unable to create onion service: %v", err)
 	}
-	defer onion.Close()
+	// Intentionally not closing onion, ref: https://github.com/cretz/bine/issues/12
+	//defer onion.Close()
 
 	// Serve rwtxt
 	log.Debug("Serving rwtxt over HTTP")
-	rwt, err := rwtxt.New(fs)
-	if err != nil {
-		return fmt.Errorf("Failed creating rwtxt instance: %v", err)
-	}
-	log.Infof("Open Tor browser and visit rwtxt at http://%v.onion", onion.ID)
-	return http.Serve(onion, http.HandlerFunc(rwt.Handler))
+	return serveRwtxt(fs, onion)
 }
 
 type logDebugWriter struct{}
 
 func (logDebugWriter) Write(p []byte) (n int, err error) {
-	log.Debug(string(p))
+	log.Debug(string(bytes.TrimRightFunc(p, unicode.IsSpace)))
 	return
 }
 
@@ -114,8 +111,11 @@ func getDBKey(maybeDBPass string, maybeDBPassFile string) (string, error) {
 	}
 	// No key or file means password prompt
 	for {
+		log.Flush()
 		fmt.Print("Enter DB password: ")
-		if dbPassBytes, err := terminal.ReadPassword(int(syscall.Stdin)); err != nil {
+		dbPassBytes, err := terminal.ReadPassword(int(syscall.Stdin))
+		fmt.Println()
+		if err != nil {
 			return "", fmt.Errorf("Failed reading password: %v", err)
 		} else if len(dbPassBytes) > 0 {
 			return string(dbPassBytes), nil
@@ -152,6 +152,7 @@ func listenOnion(t *tor.Tor, keyFile string) (*tor.OnionService, error) {
 	// Load key from file if able
 	keyFileNotExist := false
 	if keyFile != "" {
+		listenConf.Detach = true
 		if onionKeyPEMBytes, err := ioutil.ReadFile(keyFile); os.IsNotExist(err) {
 			keyFileNotExist = true
 		} else if err != nil {
@@ -163,6 +164,7 @@ func listenOnion(t *tor.Tor, keyFile string) (*tor.OnionService, error) {
 		} else if len(block.Bytes) != ed25519.PrivateKeySize {
 			return nil, fmt.Errorf("Invalid key size in file %v", keyFile)
 		} else {
+			log.Debugf("Setting private key from file %v to %v", keyFile, listenConf.Key)
 			listenConf.Key = ed25519.PrivateKey(block.Bytes)
 		}
 	}
@@ -177,6 +179,7 @@ func listenOnion(t *tor.Tor, keyFile string) (*tor.OnionService, error) {
 			Type:  "RWTXT-CRYPT PRIVATE KEY",
 			Bytes: onion.Key.(ed25519.KeyPair).PrivateKey(),
 		}
+		log.Debugf("Saving private key to file %v as %v", keyFile, block.Bytes)
 		file, err := os.OpenFile(keyFile, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0600)
 		if err != nil {
 			return nil, fmt.Errorf("Unable to create file at %v: %v", keyFile, err)
@@ -187,4 +190,22 @@ func listenOnion(t *tor.Tor, keyFile string) (*tor.OnionService, error) {
 		}
 	}
 	return onion, nil
+}
+
+func serveRwtxt(fs *db.FileSystem, onion *tor.OnionService) error {
+	rwt, err := rwtxt.New(fs)
+	if err != nil {
+		return fmt.Errorf("Failed creating rwtxt instance: %v", err)
+	}
+	log.Infof("Open Tor browser and visit rwtxt at http://%v.onion", onion.ID)
+	log.Infof("Press enter to exit")
+	errCh := make(chan error, 1)
+	go func() { errCh <- http.Serve(onion, http.HandlerFunc(rwt.Handler)) }()
+	// End when enter is pressed
+	go func() {
+		fmt.Scanln()
+		log.Info("Closing due to key press")
+		errCh <- nil
+	}()
+	return <-errCh
 }
