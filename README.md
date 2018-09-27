@@ -1,12 +1,12 @@
 # rwtxt-crypt
 
 rwtxt-crypt is a version of the [rwtxt](https://github.com/schollz/rwtxt) CMS that adds
-[Sqlite encryption](https://github.com/cretz/go-sqleet) and [Tor support](https://github.com/cretz/bine).
+[SQLite encryption](https://github.com/cretz/go-sqleet) and [Tor support](https://github.com/cretz/bine).
 
 **[Download the Latest Release](https://github.com/cretz/rwtxt-crypt/releases)** 
 
 It is built as a single, self-contained executable that can be downloaded via
-[releases](https://github.com/cretz/rwtxt-crypt/releases)). For Windows, just run the executable (you may have to
+[releases](https://github.com/cretz/rwtxt-crypt/releases). For Windows, just run the executable (you may have to
 click past a Windows warning). For Linux, `chmod +x` the file to make it executable before running. For macOS there is
 not a precompiled version yet so please see the build instructions.
 
@@ -14,7 +14,7 @@ not a precompiled version yet so please see the build instructions.
 
 * This is an early proof of concept. Bugs/feedback welcome
 * Only run the downloaded/built executable on your computer if you trust it and me
-* There are no guarantees about the security of the sqlite DB or the Tor implementation/usage
+* There are no guarantees about the security of the SQLite DB or the Tor implementation/usage
 
 ## Usage
 
