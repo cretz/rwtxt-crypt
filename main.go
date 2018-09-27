@@ -14,8 +14,10 @@ import (
 	"unicode"
 
 	log "github.com/cihub/seelog"
+	tor035 "github.com/cretz/bine/process/embedded/tor-0.3.5"
 	"github.com/cretz/bine/tor"
 	"github.com/cretz/bine/torutil/ed25519"
+	"github.com/cretz/bine/torutil/geoipembed"
 	_ "github.com/cretz/go-sqleet/sqlite3"
 	"github.com/schollz/rwtxt"
 	"github.com/schollz/rwtxt/pkg/db"
@@ -34,9 +36,11 @@ func run() error {
 	// Parse flags
 	debug := flag.Bool("debug", false, "debug mode")
 	dbName := flag.String("db", "rwtxt-crypt.db", "name of the database")
-	dbPass := flag.String("dbPass", "", "string password to encrypt DB")
-	dbPassFile := flag.String("dbPassFile", "", "file with string password to encrypt DB")
-	onionKeyFile := flag.String("onionKeyFile", "", "file to load/save PEM onion private key to")
+	dbPass := flag.String("dbPass", "", "string password to encrypt DB, default dbPassFile or prompt")
+	dbPassFile := flag.String("dbPassFile", "", "file with string password to encrypt DB, default dbPass or prompt")
+	onionKeyFile := flag.String("onionKeyFile", "", "file to load/save PEM onion private key to, default new each time")
+	torPath := flag.String("torPath", "", "path to tor executable, default use embedded version")
+	torDataDir := flag.String("torDataDir", "", "path to tor data dir, default temp dir in local folder deleted on close")
 	flag.Parse()
 	if flag.NArg() > 0 {
 		return fmt.Errorf("Unrecognized args: %v", flag.Args())
@@ -66,7 +70,7 @@ func run() error {
 
 	// Start Tor
 	log.Debug("Starting Tor")
-	tor, err := startTor(*debug)
+	tor, err := startTor(*debug, *torPath, *torDataDir)
 	if err != nil {
 		return fmt.Errorf("Unable to start Tor: %v", err)
 	}
@@ -88,9 +92,9 @@ func run() error {
 
 type logDebugWriter struct{}
 
-func (logDebugWriter) Write(p []byte) (n int, err error) {
+func (logDebugWriter) Write(p []byte) (int, error) {
 	log.Debug(string(bytes.TrimRightFunc(p, unicode.IsSpace)))
-	return
+	return len(p), nil
 }
 
 // getDBKey returns the given pass if non-empty, or the pass from the file if
@@ -136,8 +140,15 @@ func createFileSystem(dbPath string, dbKey string) (fs *db.FileSystem, err error
 	return
 }
 
-func startTor(debug bool) (*tor.Tor, error) {
-	startConf := &tor.StartConf{}
+func startTor(debug bool, torPath string, torDataDir string) (*tor.Tor, error) {
+	startConf := &tor.StartConf{ExePath: torPath, DataDir: torDataDir}
+	if startConf.ExePath == "" {
+		startConf.ProcessCreator = tor035.NewCreator()
+	}
+	// Use embedded geoip files if no data dir was given
+	if startConf.DataDir == "" {
+		startConf.GeoIPFileReader = geoipembed.GeoIPReader
+	}
 	if debug {
 		startConf.DebugWriter = logDebugWriter{}
 	}
