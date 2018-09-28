@@ -52,6 +52,6 @@ To build:
 * Make `rwtxt` - navigate to `$GOPATH/src/github.com/schollz/rwtxt` and run `make` (must do in MinGW on Windows)
 * Remove explicit `sqlite` dep - navigate to `$GOPATH/src/github.com/schollz/sqlite3dump` and remove or comment out the
   `_ "github.com/mattn/go-sqlite3"` line (see [this issue](https://github.com/schollz/sqlite3dump/issues/1))
-* Build tor statically - navigate to `$GOPATH/src/github.com/cretz/tor-static` and follow the instructions in the README
-  to build a statically-linkable version of Tor.
+* Build tor statically - navigate to `$GOPATH/src/github.com/cretz/tor-static`, checkout the `tor-0.3.5.x` branch, and
+  follow the instructions in the README to build a statically-linkable version of Tor.
 * Build the executable - navigate to `$GOPATH/src/github.com/cretz/rwtxt-crypt` and run `go build`
